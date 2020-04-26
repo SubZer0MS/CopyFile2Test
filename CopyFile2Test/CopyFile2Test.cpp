@@ -54,7 +54,7 @@ COPYFILE2_MESSAGE_ACTION CALLBACK FileCopyProgressRoutine(
     return pFileCopyInfo->bCancelled ? COPYFILE2_PROGRESS_CANCEL : COPYFILE2_PROGRESS_CONTINUE;
 }
 
-DWORD WINAPI FileCopyTaskThread(
+DWORD WINAPI FileCopyThread(
     __inout LPVOID lpThreadParameter)
 {
     PFILECOPYINFO pFileCopyInfo = reinterpret_cast<PFILECOPYINFO>(lpThreadParameter);
@@ -100,7 +100,7 @@ DWORD wmain(int argc, PWCHAR argv[])
 
     InitializeCriticalSection(&fileCopyInfo.csLock);
 
-    fileCopyInfo.hCopyThread = CreateThread(NULL, NULL, FileCopyTaskThread, (LPVOID)&fileCopyInfo, 0, nullptr);
+    fileCopyInfo.hCopyThread = CreateThread(NULL, NULL, FileCopyThread, (LPVOID)&fileCopyInfo, 0, nullptr);
 
     if (fileCopyInfo.hCopyThread == INVALID_HANDLE_VALUE)
     {
