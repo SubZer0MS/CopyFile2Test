@@ -1,8 +1,5 @@
 #include <iostream>
 #include <Windows.h>
-#include <Shlwapi.h>
-
-#pragma comment(lib, "Shlwapi.lib")
 
 HANDLE g_CancelEvent;
 
@@ -96,12 +93,22 @@ int wmain(int argc, PWCHAR argv[])
     std::wstring sourcePath = argv[1];
     std::wstring destinationPath = argv[2];
 
-    if (!PathFileExists(sourcePath.c_str()))
+    HANDLE hSourceFile = CreateFile(sourcePath.c_str(),
+        GENERIC_READ,
+        FILE_SHARE_READ,
+        NULL,
+        OPEN_EXISTING,
+        FILE_ATTRIBUTE_NORMAL,
+        NULL);
+
+    if (hSourceFile == INVALID_HANDLE_VALUE)
     {
         status = HRESULT_FROM_WIN32(GetLastError());
         std::wcerr << L"ERROR: Source file \"" << sourcePath << "\" does not exist or failed to be verified with error 0x" << std::hex << status << std::endl;
         return status;
     }
+
+    CloseHandle(hSourceFile);
 
     TCHAR buffer[MAX_PATH] = L"";
     if (!GetFullPathName(destinationPath.c_str(), MAX_PATH, buffer, NULL))
