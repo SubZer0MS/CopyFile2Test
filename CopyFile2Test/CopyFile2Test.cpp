@@ -73,9 +73,11 @@ DWORD WINAPI FileCopyThread(
         status = HRESULT_FROM_WIN32(status);
         std::wcerr << L"ERROR: CopFile2 failed with 0x" << std::hex << status << std::endl;
     }
-
-    pFileCopyInfo->progress = 100;
-    std::wcout << L"Copy progress is " << pFileCopyInfo->progress << L"% and Offloading is " << (pFileCopyInfo->bOffloaded ? L"ENABLED" : L"DISABLED") << std::endl;
+    else
+    {
+        pFileCopyInfo->progress = 100;
+        std::wcout << L"Copy finished, progress is " << pFileCopyInfo->progress << L"% and Offloading is " << (pFileCopyInfo->bOffloaded ? L"ENABLED" : L"DISABLED") << std::endl;
+    }
 
     return status;
 }
