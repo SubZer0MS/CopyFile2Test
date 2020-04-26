@@ -1,5 +1,8 @@
 #include <iostream>
 #include <Windows.h>
+#include <Shlwapi.h>
+
+#pragma comment(lib, "Shlwapi.lib")
 
 HANDLE g_CancelEvent;
 
@@ -48,7 +51,7 @@ COPYFILE2_MESSAGE_ACTION CALLBACK FileCopyProgressRoutine(
         pFileCopyInfo->bOffloaded &= (pMessage->Info.ChunkFinished.dwFlags & COPYFILE2_MESSAGE_COPY_OFFLOAD);
         LeaveCriticalSection(&pFileCopyInfo->csLock);
 
-        std::wcout << L"Copy progress is " << pFileCopyInfo->progress << L"% and Offloading is " << (pFileCopyInfo->bOffloaded ? L"TRUE" : L"FALSE") << std::endl;
+        std::wcout << L"Copy progress is " << pFileCopyInfo->progress << L"% and Offloading is " << (pFileCopyInfo->bOffloaded ? L"ENABLED" : L"DISABLED") << std::endl;
     }
 
     return pFileCopyInfo->bCancelled ? COPYFILE2_PROGRESS_CANCEL : COPYFILE2_PROGRESS_CONTINUE;
@@ -66,22 +69,21 @@ DWORD WINAPI FileCopyThread(
     exParams.pfCancel = (LPBOOL)pFileCopyInfo->bCancelled;
     exParams.pvCallbackContext = (LPVOID)pFileCopyInfo;
 
-    HRESULT status = CopyFile2(pFileCopyInfo->szSourchPath, pFileCopyInfo->szDestinationPath, &exParams);
+    DWORD status = CopyFile2(pFileCopyInfo->szSourchPath, pFileCopyInfo->szDestinationPath, &exParams);
 
     if (!SUCCEEDED(status))
     {
-        std::wcerr << L"ERROR: CopFile2 failed." << std::endl;
-
-        return E_FAIL;
+        status = HRESULT_FROM_WIN32(status);
+        std::wcerr << L"ERROR: CopFile2 failed with 0x" << std::hex << status << std::endl;
     }
 
     pFileCopyInfo->progress = 100;
-    std::wcout << L"Copy progress is " << pFileCopyInfo->progress << L"% and Offloading is " << (pFileCopyInfo->bOffloaded ? L"TRUE" : L"FALSE") << std::endl;
+    std::wcout << L"Copy progress is " << pFileCopyInfo->progress << L"% and Offloading is " << (pFileCopyInfo->bOffloaded ? L"ENABLED" : L"DISABLED") << std::endl;
 
-    return ERROR_SUCCESS;
+    return status;
 }
 
-DWORD wmain(int argc, PWCHAR argv[])
+int wmain(int argc, PWCHAR argv[])
 {
     DWORD status = ERROR_SUCCESS;
 
@@ -94,6 +96,21 @@ DWORD wmain(int argc, PWCHAR argv[])
     std::wstring sourcePath = argv[1];
     std::wstring destinationPath = argv[2];
 
+    if (!PathFileExists(sourcePath.c_str()))
+    {
+        status = HRESULT_FROM_WIN32(GetLastError());
+        std::wcerr << L"ERROR: Source file \"" << sourcePath << "\" does not exist or failed to be verified with error 0x" << std::hex << status << std::endl;
+        return status;
+    }
+
+    TCHAR buffer[MAX_PATH] = L"";
+    if (!GetFullPathName(destinationPath.c_str(), MAX_PATH, buffer, NULL))
+    {
+        status = HRESULT_FROM_WIN32(GetLastError());
+        std::wcerr << L"ERROR: Destination path \"" << destinationPath << "\" is invalid or failed to be verified with error 0x" << std::hex << status << std::endl;
+        return status;
+    }
+
     FILECOPYINFO fileCopyInfo;
     fileCopyInfo.szSourchPath = sourcePath.c_str();
     fileCopyInfo.szDestinationPath = destinationPath.c_str();
@@ -104,29 +121,29 @@ DWORD wmain(int argc, PWCHAR argv[])
 
     if (fileCopyInfo.hCopyThread == INVALID_HANDLE_VALUE)
     {
-        std::wcerr << L"ERROR: Failed to create the Copy Thread." << std::endl;
-        status = GetLastError();
+        status = HRESULT_FROM_WIN32(GetLastError());
+        std::wcerr << L"ERROR: Failed to create the Copy Thread with error 0x" << std::hex << status << std::endl;
     }
     else
     {
         g_CancelEvent = CreateEvent(NULL, TRUE, FALSE, NULL);
         if (g_CancelEvent == NULL)
         {
-            std::wcerr << L"ERROR: Failed to create Cancel Event." << std::endl;
-            status = GetLastError();
+            status = HRESULT_FROM_WIN32(GetLastError());
+            std::wcerr << L"ERROR: Failed to create Cancel Event with error 0x" << std::hex << status << std::endl;
         }
 
         if (!SetConsoleCtrlHandler((PHANDLER_ROUTINE)ConsoleHandler, TRUE))
         {
-            std::wcerr << L"ERROR: Failed to set Console Handler." << std::endl;
-            status = GetLastError();
+            status = HRESULT_FROM_WIN32(GetLastError());
+            std::wcerr << L"ERROR: Failed to set Console Handler with error 0x" << std::hex << status << std::endl;
         }
 
         HANDLE waitObjects[2];
         waitObjects[0] = fileCopyInfo.hCopyThread;
         waitObjects[1] = g_CancelEvent;
 
-        status = WaitForMultipleObjects(2, waitObjects, FALSE, INFINITE);
+        status = WaitForMultipleObjects(sizeof(waitObjects) / sizeof(HANDLE), waitObjects, FALSE, INFINITE);
 
         if (status == WAIT_OBJECT_0)
         {
@@ -136,6 +153,7 @@ DWORD wmain(int argc, PWCHAR argv[])
         {
             fileCopyInfo.bCancelled = true;
             WaitForSingleObject(fileCopyInfo.hCopyThread, INFINITE);
+
             std::wcout << L"Copy operation has been cancelled by the user." << std::endl;
         }
 
@@ -145,8 +163,8 @@ DWORD wmain(int argc, PWCHAR argv[])
         {            
             if (!DeleteFile(fileCopyInfo.szDestinationPath))
             {
-                std::wcerr << L"ERROR: Failed to delete the destination file when operation has been cancelled." << std::endl;
-                status = GetLastError();
+                status = HRESULT_FROM_WIN32(GetLastError());
+                std::wcerr << L"ERROR: Failed to delete the destination file when operation has been cancelled with error 0x" << std::hex << status << std::endl;
             }
         }
 
